@@ -37,3 +37,21 @@ export interface DroneConfig {
   consumptionRate: number;  // mAh/min
   safeDistance: number;     // meters from obstacles
 }
+
+export interface Payload {
+  id: string;
+  name: string;
+  weight: number;           // kg
+  powerConsumption: number; // mAh/min extra consumption
+  icon: string;
+  description: string;
+}
+
+export interface DroneModel {
+  id: string;
+  name: string;
+  baseConfig: DroneConfig;
+  maxPayloadWeight: number; // kg
+  compatiblePayloads: string[]; // payload ids
+  icon: string;
+}

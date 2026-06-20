@@ -1,4 +1,4 @@
-import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig } from '../types';
+import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig, Payload, DroneModel } from '../types';
 
 // ─── Haversine distance ─────────────────────────────────────────────────────
 export function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -267,7 +267,11 @@ export function smoothPath(waypoints: Waypoint[], segments = 5): Waypoint[] {
 }
 
 // ─── Flight Statistics ──────────────────────────────────────────────────────
-export function calculateFlightStats(waypoints: Waypoint[], config: DroneConfig) {
+export function calculateFlightStats(
+  waypoints: Waypoint[],
+  config: DroneConfig,
+  payload?: Payload | null
+) {
   let totalDistance = 0;
   for (let i = 1; i < waypoints.length; i++) {
     totalDistance += haversine(
@@ -276,16 +280,30 @@ export function calculateFlightStats(waypoints: Waypoint[], config: DroneConfig)
     );
   }
 
-  const avgSpeed = waypoints.reduce((s, w) => s + w.speed, 0) / (waypoints.length || 1);
+  const payloadWeightFactor = payload ? 1 + payload.weight * 0.08 : 1;
+  const avgSpeed = (waypoints.reduce((s, w) => s + w.speed, 0) / (waypoints.length || 1)) / payloadWeightFactor;
   const estimatedTime = totalDistance / (avgSpeed || 1); // seconds
   const flightMinutes = estimatedTime / 60;
-  const batteryUsage = (flightMinutes * config.consumptionRate / config.batteryCapacity) * 100;
+
+  const extraConsumption = payload ? payload.powerConsumption : 0;
+  const totalConsumptionRate = config.consumptionRate * payloadWeightFactor + extraConsumption;
+  const batteryUsage = (flightMinutes * totalConsumptionRate / config.batteryCapacity) * 100;
+
+  const safeDistance = calculateSafeDistance(config, payload);
 
   return {
     totalDistance,
     estimatedTime,
     batteryUsage: Math.min(100, batteryUsage),
+    safeDistance,
   };
+}
+
+export function calculateSafeDistance(config: DroneConfig, payload?: Payload | null): number {
+  const baseDistance = config.safeDistance;
+  if (!payload) return baseDistance;
+  const weightBonus = payload.weight * 5;
+  return baseDistance + weightBonus;
 }
 
 // ─── Terrain Collision Check ────────────────────────────────────────────────
@@ -313,6 +331,103 @@ export function checkTerrainCollision(
 
   return { safe: collisions.length === 0, collisions };
 }
+
+// ─── Mock Payloads & Drone Models ───────────────────────────────────────────
+export const mockPayloads: Payload[] = [
+  {
+    id: 'payload-none',
+    name: '无载荷',
+    weight: 0,
+    powerConsumption: 0,
+    icon: '📦',
+    description: '空载飞行，续航最长',
+  },
+  {
+    id: 'payload-camera',
+    name: '高清相机',
+    weight: 0.5,
+    powerConsumption: 15,
+    icon: '📷',
+    description: '4K 高清航拍相机',
+  },
+  {
+    id: 'payload-gimbal',
+    name: '云台相机',
+    weight: 1.2,
+    powerConsumption: 25,
+    icon: '🎥',
+    description: '三轴防抖云台 + 变焦相机',
+  },
+  {
+    id: 'payload-lidar',
+    name: '激光雷达',
+    weight: 2.0,
+    powerConsumption: 40,
+    icon: '📡',
+    description: 'LiDAR 地形测绘模块',
+  },
+  {
+    id: 'payload-thermal',
+    name: '热成像仪',
+    weight: 1.5,
+    powerConsumption: 35,
+    icon: '🔥',
+    description: '红外热像成像设备',
+  },
+  {
+    id: 'payload-delivery',
+    name: '配送箱',
+    weight: 3.0,
+    powerConsumption: 10,
+    icon: '📮',
+    description: '3kg 级物资配送箱',
+  },
+];
+
+export const mockDroneModels: DroneModel[] = [
+  {
+    id: 'drone-mavic',
+    name: 'Mavic 3 Pro',
+    icon: '🛩',
+    maxPayloadWeight: 1.5,
+    compatiblePayloads: ['payload-none', 'payload-camera', 'payload-gimbal', 'payload-thermal'],
+    baseConfig: {
+      maxAltitude: 500,
+      maxSpeed: 21,
+      batteryCapacity: 5000,
+      consumptionRate: 100,
+      safeDistance: 30,
+    },
+  },
+  {
+    id: 'drone-matrice',
+    name: 'Matrice 300 RTK',
+    icon: '🚁',
+    maxPayloadWeight: 3.0,
+    compatiblePayloads: ['payload-none', 'payload-camera', 'payload-gimbal', 'payload-lidar', 'payload-thermal', 'payload-delivery'],
+    baseConfig: {
+      maxAltitude: 700,
+      maxSpeed: 23,
+      batteryCapacity: 9000,
+      consumptionRate: 180,
+      safeDistance: 40,
+    },
+  },
+  {
+    id: 'drone-phantom',
+    name: 'Phantom 4 RTK',
+    icon: '✈',
+    maxPayloadWeight: 1.0,
+    compatiblePayloads: ['payload-none', 'payload-camera'],
+    baseConfig: {
+      maxAltitude: 600,
+      maxSpeed: 20,
+      batteryCapacity: 5870,
+      consumptionRate: 120,
+      safeDistance: 35,
+    },
+  },
+];
 
 // ─── KML Export ─────────────────────────────────────────────────────────────
 export function exportKML(plan: FlightPlan): string {

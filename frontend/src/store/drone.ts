@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig } from '../types';
+import { ref, computed, watch } from 'vue';
+import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig, Payload, DroneModel } from '../types';
 import {
   aStarPathfind,
   rrtPathfind,
@@ -10,6 +10,8 @@ import {
   exportKML,
   mockNoFlyZones,
   mockTerrainData,
+  mockPayloads,
+  mockDroneModels,
 } from '../utils/pathfinding';
 
 export const useDroneStore = defineStore('drone', () => {
@@ -22,12 +24,62 @@ export const useDroneStore = defineStore('drone', () => {
   const simProgress = ref(0);
   const mapCenter = ref<[number, number]>([39.9, 116.4]);
 
+  const payloads = ref<Payload[]>(mockPayloads);
+  const droneModels = ref<DroneModel[]>(mockDroneModels);
+  const selectedDroneModelId = ref<string>('drone-mavic');
+  const selectedPayloadId = ref<string>('payload-none');
+
+  const selectedDroneModel = computed<DroneModel | null>(() => {
+    return droneModels.value.find((m) => m.id === selectedDroneModelId.value) || null;
+  });
+
+  const selectedPayload = computed<Payload | null>(() => {
+    return payloads.value.find((p) => p.id === selectedPayloadId.value) || null;
+  });
+
+  const availablePayloads = computed<Payload[]>(() => {
+    if (!selectedDroneModel.value) return [];
+    return payloads.value.filter((p) =>
+      selectedDroneModel.value!.compatiblePayloads.includes(p.id)
+    );
+  });
+
+  const isPayloadCompatible = computed(() => {
+    if (!selectedDroneModel.value || !selectedPayload.value) return true;
+    return selectedDroneModel.value.compatiblePayloads.includes(selectedPayload.value.id);
+  });
+
   const droneConfig = ref<DroneConfig>({
     maxAltitude: 500,
     maxSpeed: 20,
     batteryCapacity: 5000,
     consumptionRate: 100,
     safeDistance: 30,
+  });
+
+  function applyDroneModel(modelId: string) {
+    const model = droneModels.value.find((m) => m.id === modelId);
+    if (!model) return;
+    selectedDroneModelId.value = modelId;
+    droneConfig.value = { ...model.baseConfig };
+    if (!isPayloadCompatible.value) {
+      selectedPayloadId.value = 'payload-none';
+    }
+  }
+
+  function applyPayload(payloadId: string) {
+    const payload = payloads.value.find((p) => p.id === payloadId);
+    if (!payload) return;
+    if (selectedDroneModel.value && !selectedDroneModel.value.compatiblePayloads.includes(payloadId)) {
+      return;
+    }
+    selectedPayloadId.value = payloadId;
+  }
+
+  watch([selectedDroneModelId, selectedPayloadId], () => {
+    if (waypoints.value.length > 0) {
+      updatePlan();
+    }
   });
 
   // ─── Actions ──────────────────────────────────────────────────────────────
@@ -71,7 +123,11 @@ export const useDroneStore = defineStore('drone', () => {
   }
 
   function updatePlan() {
-    const stats = calculateFlightStats(waypoints.value, droneConfig.value);
+    const stats = calculateFlightStats(
+      waypoints.value,
+      droneConfig.value,
+      selectedPayload.value
+    );
     currentPlan.value = {
       id: `plan-${Date.now()}`,
       name: 'Flight Plan',
@@ -80,7 +136,10 @@ export const useDroneStore = defineStore('drone', () => {
       estimatedTime: stats.estimatedTime,
       batteryUsage: stats.batteryUsage,
     };
+    currentSafeDistance.value = stats.safeDistance;
   }
+
+  const currentSafeDistance = ref<number>(30);
 
   let simInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -101,6 +160,10 @@ export const useDroneStore = defineStore('drone', () => {
   function loadMockData() {
     noFlyZones.value = mockNoFlyZones;
     terrainData.value = mockTerrainData;
+    applyDroneModel(selectedDroneModelId.value);
+    if (waypoints.value.length > 0) {
+      updatePlan();
+    }
   }
 
   function exportPlan(): string {
@@ -156,6 +219,15 @@ export const useDroneStore = defineStore('drone', () => {
     isSimulating,
     simProgress,
     mapCenter,
+    payloads,
+    droneModels,
+    selectedDroneModelId,
+    selectedPayloadId,
+    selectedDroneModel,
+    selectedPayload,
+    availablePayloads,
+    isPayloadCompatible,
+    currentSafeDistance,
     totalDistance,
     estimatedTime,
     batteryPercent,
@@ -169,5 +241,7 @@ export const useDroneStore = defineStore('drone', () => {
     loadMockData,
     exportPlan,
     updatePlan,
+    applyDroneModel,
+    applyPayload,
   };
 });

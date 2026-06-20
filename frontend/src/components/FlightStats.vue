@@ -77,10 +77,25 @@ function handleExport() {
           {{ store.selectedAlgorithm }}
         </div>
       </div>
+      <div class="bg-slate-900 rounded p-2">
+        <div class="text-slate-400">安全距离</div>
+        <div class="text-lg font-bold text-amber-400">
+          {{ store.currentSafeDistance }}
+          <span class="text-xs text-slate-500">m</span>
+        </div>
+      </div>
     </div>
 
     <div class="border-t border-slate-700 pt-2">
-      <h4 class="text-xs text-slate-400 mb-1">无人机配置</h4>
+      <h4 class="text-xs text-slate-400 mb-1">
+        当前配置
+        <span v-if="store.selectedDroneModel" class="text-sky-400">
+          {{ store.selectedDroneModel.icon }} {{ store.selectedDroneModel.name }}
+        </span>
+        <span v-if="store.selectedPayload && store.selectedPayload.id !== 'payload-none'" class="text-purple-400 ml-1">
+          + {{ store.selectedPayload.icon }} {{ store.selectedPayload.name }}
+        </span>
+      </h4>
       <div class="grid grid-cols-3 gap-1 text-[10px] text-slate-500">
         <div>最大高度: {{ store.droneConfig.maxAltitude }}m</div>
         <div>最大速度: {{ store.droneConfig.maxSpeed }}m/s</div>
